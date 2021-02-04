@@ -82,7 +82,10 @@ func main() {
 }
 
 func readFileLineByLine(params cmdParams, logChannel chan string) {
-
+	fd, err := os.OpenFile(params.logFilePath)
+	if err != nil {
+		log.Warningln()
+	}
 }
 
 func logConsumer(logChannel chan string, pvChannel, uvChannel chan urlData) {
