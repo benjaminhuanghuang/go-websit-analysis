@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mgutz/str"
 	"github.com/sirupsen/logrus"
 )
@@ -54,17 +54,10 @@ type storageBlock struct {
 }
 
 var log = logrus.New()
-var redisClient redis.Client
 
 func init() {
 	log.Out = os.Stdout
 	log.SetLevel(logrus.DebugLevel)
-	redisClient, err := redis.Dial("tcp", "localhost:6379")
-	if err != nil {
-		log.Fatalln("Radis connect failed")
-	} else {
-		defer redisClient.Close()
-	}
 }
 
 func main() {
@@ -92,6 +85,20 @@ func main() {
 	var uvChannel = make(chan urlData, params.routineNum)
 	var storageChannel = make(chan storageBlock, params.routineNum)
 
+	// Redis Pool
+	redisPool, err := pool.New("tcp", "192.168.1.100:6379", 2*params.routineNum)
+	if err != nil {
+		log.Fatalln("Redis pool created failed")
+		panic(err)
+	} else {
+		go func() {
+			for {
+				redisPool.Cmd("PING")
+				time.Sleep(3 * time.Second)
+			}
+		}()
+	}
+
 	go readFileLineByLine(params, logChannel)
 
 	for i := 0; i < params.routineNum; i++ {
@@ -99,9 +106,9 @@ func main() {
 	}
 
 	go pvCounter(pvChannel, storageChannel)
-	go uvCounter(uvChannel, storageChannel)
+	go uvCounter(uvChannel, storageChannel, redisPool)
 
-	go dataStorage(storageChannel)
+	go dataStorage(storageChannel, redisPool)
 
 	//
 	time.Sleep(1000 * time.Second)
@@ -213,16 +220,16 @@ func cutLogFetchData(logStr string) digData {
 
 func pvCounter(pvChannel chan urlData, storageChannel chan storageBlock) {
 	for data := range pvChannel {
-		sItem := storageBlock{"pv", "ZINCREBY", data.unode}
+		sItem := storageBlock{"pv", "ZINCRBY", data.unode}
 		storageChannel <- sItem
 	}
 }
 
-func uvCounter(uvChannel chan urlData, storageChannel chan storageBlock) {
+func uvCounter(uvChannel chan urlData, storageChannel chan storageBlock, redisPool *pool.Pool) {
 	for data := range uvChannel {
 		//HyperLoglog redis
 		hyperLogLogKey := "uv_hpll_" + getTime(data.data.time, "day")
-		ret, err := redisClient.Cmd("PFADD", hyperLogLogKey, data.uid, "EX", 86400).Int()
+		ret, err := redisPool.Cmd("PFADD", hyperLogLogKey, data.uid, "EX", 86400).Int()
 		if err != nil {
 			log.Warningln("UvCounter check redis hyperloglog failed, ", err)
 		}
@@ -235,7 +242,7 @@ func uvCounter(uvChannel chan urlData, storageChannel chan storageBlock) {
 	}
 }
 
-func dataStorage(storageChannel chan storageBlock) {
+func dataStorage(storageChannel chan storageBlock, redisPool *pool.Pool) {
 	for block := range storageChannel {
 		prefix := block.counterType + "_"
 
