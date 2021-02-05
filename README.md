@@ -2,7 +2,9 @@
 
 https://coding.imooc.com/class/192.html
 
+https://github.com/Double-Jin/go-statistics
 
+s
 
 - 第1章 课程介绍 试看
 欢迎大家学习Go语言，本课程基于Go协程特性，实现企业级流量统计系统。关于Go语言，是一门朝气蓬勃富有战斗力的语言，它近些年的发展势头完全不亚于2012年前后的PHP语言，越来越多的Go语言爱好者、工程师。协程是Go最吸引眼球的特性，它将带你走进函数式编程的新世界。...
